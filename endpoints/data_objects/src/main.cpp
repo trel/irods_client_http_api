@@ -1294,7 +1294,7 @@ namespace
 					irods::at_scope_exit free_memory{[&input] { clearKeyVal(&input.condInput); }};
 
 					if (const auto iter = _args.find("lpath"); iter != std::end(_args)) {
-						std::strncpy(input.objPath, iter->second.c_str(), sizeof(DataObjInp::objPath));
+						std::strncpy(input.objPath, iter->second.c_str(), sizeof(DataObjInp::objPath) - 1);
 					}
 					else {
 						log::error("{}: Missing [lpath] parameter.", fn);
@@ -2095,7 +2095,7 @@ namespace
 					irods::at_scope_exit free_memory{[&input] { clearKeyVal(&input.condInput); }};
 
 					if (const auto iter = _args.find("lpath"); iter != std::end(_args)) {
-						std::strncpy(input.objPath, iter->second.c_str(), sizeof(DataObjInp::objPath));
+						std::strncpy(input.objPath, iter->second.c_str(), sizeof(DataObjInp::objPath) - 1);
 					}
 					else {
 						log::error("{}: Missing [lpath] parameter.", fn);
@@ -2181,7 +2181,7 @@ namespace
 					irods::at_scope_exit free_memory{[&input] { clearKeyVal(&input.condInput); }};
 
 					if (const auto iter = _args.find("lpath"); iter != std::end(_args)) {
-						std::strncpy(input.objPath, iter->second.c_str(), sizeof(DataObjInp::objPath));
+						std::strncpy(input.objPath, iter->second.c_str(), sizeof(DataObjInp::objPath) - 1);
 					}
 					else {
 						log::error("{}: Missing [lpath] parameter.", fn);
@@ -2289,7 +2289,7 @@ namespace
 				irods::at_scope_exit free_memory{[&info] { clearKeyVal(&info.condInput); }};
 
 				if (const auto iter = _args.find("lpath"); iter != std::end(_args)) {
-					std::strncpy(info.objPath, iter->second.c_str(), sizeof(DataObjInfo::objPath));
+					std::strncpy(info.objPath, iter->second.c_str(), sizeof(DataObjInfo::objPath) - 1);
 				}
 				else {
 					log::error("{}: Missing [lpath] parameter.", fn);
@@ -2297,7 +2297,7 @@ namespace
 				}
 
 				if (auto iter = _args.find("resource-hierarchy"); iter != std::end(_args)) {
-					std::strncpy(info.rescHier, iter->second.c_str(), sizeof(DataObjInfo::rescHier));
+					std::strncpy(info.rescHier, iter->second.c_str(), sizeof(DataObjInfo::rescHier) - 1);
 				}
 				else if (iter = _args.find("replica-number"); iter != std::end(_args)) {
 					info.replNum = std::stoi(iter->second);
