@@ -1324,6 +1324,7 @@ namespace
 						addKeyVal(&input.condInput, REG_CHKSUM_KW, "");
 					}
 
+					// TODO Rename this.
 					if (const auto iter = _args.find("force"); iter != std::end(_args) && iter->second == "1") {
 						addKeyVal(&input.condInput, FORCE_FLAG_KW, "");
 					}
@@ -1331,10 +1332,9 @@ namespace
 					auto conn = irods::get_connection(client_info.username);
 
 					if (const auto ec = rcPhyPathReg(static_cast<RcComm*>(conn), &input); ec < 0) {
-						res.result(http::status::bad_request);
 						res.body() = json{{"irods_response", {{"status_code", ec}}}}.dump();
 						res.prepare_payload();
-						_sess_ptr->send(std::move(res));
+						return _sess_ptr->send(std::move(res));
 					}
 
 					res.body() = json{{"irods_response", {{"status_code", 0}}}}.dump();
