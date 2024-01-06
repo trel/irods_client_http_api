@@ -1770,6 +1770,12 @@ namespace
 					auto conn = irods::get_connection(client_info.username);
 					const auto ec = rcDataObjChksum(static_cast<RcComm*>(conn), &input, &checksum);
 
+					if (ec < 0) {
+						res.body() = json{{"irods_response", {{"status_code", ec}}}}.dump();
+						res.prepare_payload();
+						return _sess_ptr->send(std::move(res));
+					}
+
 					res.body() = json{{"irods_response", {{"status_code", ec}}}, {"checksum", checksum}}.dump();
 				}
 				catch (const irods::exception& e) {
@@ -1851,8 +1857,15 @@ namespace
 
 					json response{{"irods_response", {{"status_code", ec}}}};
 
-					if (ec == CHECK_VERIFICATION_RESULTS) {
-						response["results"] = json::parse(results);
+					if (ec < 0) {
+						if (ec == CHECK_VERIFICATION_RESULTS) {
+							response["results"] = json::parse(results);
+						}
+						else {
+							res.body() = response.dump();
+							res.prepare_payload();
+							return _sess_ptr->send(std::move(res));
+						}
 					}
 
 					if (auto* rerr_info = static_cast<RcComm*>(conn)->rError; rerr_info) {
