@@ -24,6 +24,11 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#include <boost/process.hpp>
+#pragma clang diagnostic pop
+
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -39,6 +44,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -171,8 +177,240 @@ auto print_version_info() -> void
 	fmt::print("{} v{}-{}\n", version::binary_name, version::api_version, sha.substr(0, sha_size));
 } // print_version_info
 
+constexpr auto jsonschema() -> std::string_view
+{
+	// clang-format on
+	return R"({{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.irods.org/http_api/0.1.0/schema.json",
+    "type": "object",
+    "properties": {{
+        "http_server": {{
+            "type": "object",
+            "properties": {{
+                "host": {{
+                    "type": "string"
+                }},
+                "port": {{
+                    "type": "integer"
+                }},
+                "log_level": {{
+                    "enum": [
+                        "trace",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "critical"
+                    ]
+                }},
+                "authentication": {{
+                    "type": "object",
+                    "properties": {{
+                        "eviction_check_interval_in_seconds": {{
+                            "type": "integer",
+                            "minimum": 1
+                        }},
+                        "basic": {{
+                            "type": "object",
+                            "properties": {{
+                                "timeout_in_seconds": {{
+                                    "type": "integer",
+                                    "minimum": 1
+                                }}
+                            }},
+                            "required": ["timeout_in_seconds"]
+                        }},
+                        "openid_connect": {{
+                            "type": "object",
+                            "properties": {{
+                                "config_host": {{
+                                    "type": "string"
+                                }},
+                                "port": {{
+                                    "type": "integer",
+                                    "minimum": 1
+                                }},
+                                "well_known_uri": {{
+                                    "type": "string"
+                                }},
+                                "client_id": {{
+                                    "type": "string"
+                                }},
+                                "redirect_uri": {{
+                                    "type": "string"
+                                }}
+                            }},
+                            "required": [
+                                "config_host",
+                                "port",
+                                "well_known_uri",
+                                "client_id",
+                                "redirect_uri"
+                            ]
+                        }}
+                    }}
+                }},
+                "requests": {{
+                    "type": "object",
+                    "properties": {{
+                        "threads": {{
+                            "type": "integer",
+                            "minimum": 1
+                        }},
+                        "max_size_of_body_in_bytes": {{
+                            "type": "integer",
+                            "minimum": 0
+                        }},
+                        "timeout_in_seconds": {{
+                            "type": "integer",
+                            "minimum": 1
+                        }}
+                    }}
+                }},
+                "background_io": {{
+                    "type": "object",
+                    "properties": {{
+                        "threads": {{
+                            "type": "integer",
+                            "minimum": 1
+                        }}
+                    }}
+                }}
+            }},
+            "required": [
+                "host",
+                "port",
+                "authentication",
+                "requests",
+                "background_io"
+            ]
+        }},
+        "irods_client": {{
+            "type": "object",
+            "properties": {{
+                "host": {{
+                    "type": "string"
+                }},
+                "port": {{
+                    "type": "integer"
+                }},
+                "zone": {{
+                    "type": "string"
+                }},
+                "tls": {{
+                    "type": "object",
+                    "properties": {{
+                        "client_server_policy": {{
+                            "enum": [
+                                "CS_NEG_REFUSE",
+                                "CS_NEG_DONT_CARE",
+                                "CS_NEG_REQUIRE"
+                            ]
+                        }},
+                        "ca_certificate_file": {{
+                            "type": "string"
+                        }},
+                        "certificate_chain_file": {{
+                            "type": "string"
+                        }},
+                        "dh_params_file": {{
+                            "type": "string"
+                        }},
+                        "verify_server": {{
+                            "enum": [
+                                "none",
+                                "cert",
+                                "hostname"
+                            ]
+                        }}
+                    }},
+                    "required": [
+                        "client_server_policy",
+                        "ca_certificate_file",
+                        "dh_params_file",
+                        "verify_server"
+                    ]
+                }},
+                "proxy_admin_account": {{
+                    "type": "object",
+                    "properties": {{
+                        "username": {{
+                            "type": "string"
+                        }},
+                        "password": {{
+                            "type": "string"
+                        }}
+                    }},
+                    "required": [
+                        "username",
+                        "password"
+                    ]
+                }},
+                "enable_4_2_compatibility": {{
+                    "type": "boolean"
+                }},
+                "connection_pool": {{
+                    "type": "object",
+                    "properties": {{
+                        "size": {{
+                            "type": "integer",
+                            "minimum": 1
+                        }},
+                        "refresh_timeout_in_seconds": {{
+                            "type": "integer",
+                            "minimum": 1
+                        }},
+                        "max_retrievals_before_refresh": {{
+                            "type": "integer",
+                            "minimum": 1
+                        }},
+                        "refresh_when_resource_changes_detected": {{
+                            "type": "boolean"
+                        }}
+                    }}
+                }},
+                "max_number_of_parallel_write_streams": {{
+                    "type": "integer",
+                    "minimum": 1
+                }},
+                "max_number_of_bytes_per_read_operation": {{
+                    "type": "integer",
+                    "minimum": 1
+                }},
+                "buffer_size_in_bytes_for_write_operations": {{
+                    "type": "integer",
+                    "minimum": 1
+                }},
+                "max_number_of_rows_per_catalog_query": {{
+                    "type": "integer",
+                    "minimum": 1
+                }}
+            }},
+            "required": [
+                "host",
+                "port",
+                "zone",
+                "proxy_admin_account",
+                "max_number_of_parallel_write_streams",
+                "max_number_of_bytes_per_read_operation",
+                "buffer_size_in_bytes_for_write_operations",
+                "max_number_of_rows_per_catalog_query"
+            ]
+        }}
+    }},
+    "required": [
+        "http_server",
+        "irods_client"
+    ]
+}}
+)";
+	// clang-format on
+} // jsonschema
+
 auto print_configuration_template() -> void
 {
+	// clang-format off
 	fmt::print(R"({{
     "http_server": {{
         "host": "0.0.0.0",
@@ -243,6 +481,7 @@ auto print_configuration_template() -> void
     }}
 }}
 )");
+	// clang-format on
 } // print_configuration_template
 
 auto print_usage() -> void
@@ -257,12 +496,23 @@ configuration options.
 --dump-config-template can be used to generate a default configuration file.
 See this option's description for more information.
 
+--dump-jsonschema can be used to generate a default schema file.
+See this option's description for more information.
+
 Options:
       --dump-config-template
                      Print configuration template to stdout and exit. Some
                      options have values which act as placeholders. If used
                      to generate a configuration file, those options will
                      need to be updated.
+      --dump-jsonschema
+                     Print default JSON schema to stdout and exit. The
+                     schema is used to validate the configuration file.
+      --jsonschema-file [SCHEMA_FILE_PATH]
+                     Validate server configuration against SCHEMA_FILE_PATH.
+                     Validation is performed before startup. If validation
+                     fails, the server will exit. If SCHEMA_FILE_PATH is not
+                     defined, the default is used.
   -h, --help         Display this help message and exit.
   -v, --version      Display version information and exit.
 
@@ -270,6 +520,63 @@ Options:
 
 	print_version_info();
 } // print_usage
+
+auto is_valid_configuration(const std::string& _schema_path, const std::string& _config) -> bool
+{
+	try {
+		fmt::print("Validating configuration file ... ");
+
+		std::string schema;
+		int ec = -1;
+
+		if (_schema_path.empty()) {
+			constexpr const char* schema_path = "/tmp/default_irods_http_api_jsonschema.json";
+
+			if (std::ofstream out{schema_path}; out) {
+				out << fmt::format(jsonschema());
+			}
+			else {
+				fmt::print("failure.\n");
+				fmt::print(stderr, "error: could not create local schema file.\n");
+				return false;
+			}
+
+			ec = boost::process::system(
+				boost::process::search_path("python3"),
+				"-c",
+				fmt::format(
+					R"_(import json, jsonschema; f = open("{}"); jsonschema.validate(json.loads('{}'), json.load(f)); f.close())_",
+					schema_path,
+					_config));
+		}
+		else {
+			ec = boost::process::system(
+				boost::process::search_path("python3"),
+				"-c",
+				fmt::format(
+					R"_(import json, jsonschema; f = open("{}"); jsonschema.validate(json.loads('{}'), json.load(f)); f.close())_",
+					_schema_path,
+					_config));
+		}
+
+		if (ec == 0) {
+			fmt::print("success.\n");
+			return true;
+		}
+
+		fmt::print("failure.\n");
+	}
+	catch (const std::system_error& e) {
+		fmt::print("failure.\n", e.what());
+		fmt::print(stderr, "error: {}\n", e.what());
+	}
+	catch (const std::exception& e) {
+		fmt::print("failure.\n", e.what());
+		fmt::print(stderr, "error: {}\n", e.what());
+	}
+
+	return false;
+} // is_valid_configuration
 
 auto set_log_level(const json& _config) -> void
 {
@@ -461,7 +768,9 @@ auto main(int _argc, char* _argv[]) -> int
 	// clang-format off
 	opts_desc.add_options()
 		("config-file,f", po::value<std::string>(), "")
+		("jsonschema-file", po::value<std::string>()->implicit_value(""), "")
 		("dump-config-template", "")
+		("dump-jsonschema", "")
 		("help,h", "")
 		("version,v", "");
 	// clang-format on
@@ -491,6 +800,11 @@ auto main(int _argc, char* _argv[]) -> int
 			return 0;
 		}
 
+		if (vm.count("dump-jsonschema") > 0) {
+			fmt::print(jsonschema());
+			return 0;
+		}
+
 		if (vm.count("config-file") == 0) {
 			fmt::print(stderr, "Error: Missing [CONFIG_FILE_PATH] parameter.");
 			return 1;
@@ -498,6 +812,12 @@ auto main(int _argc, char* _argv[]) -> int
 
 		const auto config = json::parse(std::ifstream{vm["config-file"].as<std::string>()});
 		irods::http::globals::set_configuration(config);
+
+		if (vm.count("jsonschema-file") > 0) {
+			if (!is_valid_configuration(vm["jsonschema-file"].as<std::string>(), config.dump())) {
+				return 1;
+			}
+		}
 
 		const auto& http_server_config = config.at("http_server");
 		set_log_level(http_server_config);

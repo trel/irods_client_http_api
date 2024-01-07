@@ -171,6 +171,36 @@ You can view the log output using `docker logs -f` or by passing `-it` to `docke
 
 Congratulations, you now have a working iRODS HTTP API server!
 
+#### Validating the Configuration
+
+If you have Python 3 and the jsonschema module installed, you can validate your configuration on startup. To do that, launch the container with `--jsonschema-file`. Below is an example.
+```bash
+docker run -d --rm --name irods_http_api \
+    -v /path/to/config/file:/config.json:ro \
+    -p 9000:9000 \
+    irods-http-api-runner \
+    --jsonschema-file
+```
+
+If your configuration passes validation, the server will start. Otherwise, the server will print the validation results to the terminal and exit.
+
+If for some reason the default schema file is not sufficient, you can instruct the iRODS HTTP API to use a different file. See the following example.
+```bash
+# Generate the default JSON schema.
+docker run -it --rm irods-http-api-runner --dump-jsonschema > schema.json
+
+# Tweak the schema.
+vim schema.json
+
+# Launch the server with the new schema file.
+docker run -d --rm --name irods_http_api \
+    -v /path/to/config/file:/config.json:ro \
+    -v ./schema.json:/jsonschema.json:ro \
+    -p 9000:9000 \
+    irods-http-api-runner \
+    --jsonschema-file /jsonschema.json
+```
+
 ### Stopping the Container
 
 If the container was launched with `-it`, use **CTRL-C** or `docker container stop <container_name>` to shut it down.
