@@ -312,138 +312,107 @@ namespace
 	// Utility functions
 	//
 
-#ifdef IRODS_HTTP_API_INC_READ_IMPL_0
-	struct incremental_read_context
+	class incremental_read : public std::enable_shared_from_this<incremental_read>
 	{
-		irods::http::session_pointer_type sess_ptr;
-		std::unique_ptr<http::response<http::buffer_body>> res;
-		std::unique_ptr<http::response_serializer<http::buffer_body>> serializer;
-
-		irods::experimental::client_connection conn{irods::experimental::defer_connection};
-		std::unique_ptr<io::client::native_transport> tp;
-		io::idstream in;
-
-		std::vector<char> buffer;
-		std::int64_t remaining_bytes = 0;
-	};
-
-	auto async_incremental_read(incremental_read_context&& _ctx) -> void
-	{
-		irods::http::globals::background_task([fn = __func__, _ctx = std::move(_ctx)]() mutable {
-			log::debug("{}: Start!", fn);
-
-			// TODO Handle std::min<streamsize> cast for _ctx.buffer.size().
-			_ctx.in.read(_ctx.buffer.data(), std::min<std::streamsize>(_ctx.buffer.size(), _ctx.remaining_bytes));
-
-			if (_ctx.in.fail()) {
-				log::error("{}: Stream is in a bad state.", fn);
-				return;
-			}
-
-			if (_ctx.in.eof() || 0 == _ctx.remaining_bytes) {
-				log::debug("{}: All bytes have been read", fn);
-				_ctx.res->body().data = nullptr;
-				_ctx.res->body().more = false;
-			}
-			else {
-				log::debug("{}: Read [{}] bytes.", fn, _ctx.in.gcount());
-				_ctx.remaining_bytes -= _ctx.in.gcount();
-				_ctx.res->body().data = _ctx.buffer.data();
-				_ctx.res->body().size = _ctx.in.gcount();
-				_ctx.res->body().more = true;
-			}
-
-			async_write(
-				_ctx.sess_ptr->stream(),
-				*_ctx.serializer,
-				[ctx = std::move(_ctx)](const auto& _ec, std::size_t _bytes_transferred) mutable {
-					static_cast<void>(_bytes_transferred);
-
-					if (_ec == http::error::need_buffer) {
-						async_incremental_read(std::move(ctx));
-					}
-					else if (_ec) {
-						log::error("encountered error in async_incremental_read"); // TODO
-					}
-				});
-		});
-	} // async_incremental_read
-#else
-	struct incremental_read_context : public std::enable_shared_from_this<incremental_read_context>
-	{
-		incremental_read_context(
+	  public:
+		incremental_read(
 			irods::http::session_pointer_type& _sess_ptr,
-			http::response<http::buffer_body>& _res,
+			unsigned int _http_version,
+			bool _http_keep_alive,
 			irods::experimental::client_connection& _conn,
 			std::unique_ptr<io::client::native_transport>& _tp,
 			io::idstream& _in,
-			std::vector<char>& _buffer,
+			std::int64_t _buffer_size,
 			std::int64_t _remaining_bytes)
-			: sess_ptr{_sess_ptr->shared_from_this()}
-			, res{std::move(_res)}
-			, serializer{res}
-			, conn{std::move(_conn)}
-			, tp{std::move(_tp)}
-			, in{std::move(_in)}
-			, buffer{std::move(_buffer)}
-			, remaining_bytes{_remaining_bytes}
+			: sess_ptr_{_sess_ptr->shared_from_this()}
+			, res_{http::status::ok, _http_version}
+			, serializer_{res_}
+			, conn_{std::move(_conn)}
+			, tp_{std::move(_tp)}
+			, in_{std::move(_in)}
+			, buffer_(_buffer_size)
+			, remaining_bytes_{_remaining_bytes}
 		{
+			res_.set(http::field::server, irods::http::version::server_name);
+			res_.set(http::field::content_type, "application/octet-stream");
+			res_.keep_alive(_http_keep_alive);
+			res_.chunked(true);
+			res_.body().data = nullptr;
+			res_.body().more = true;
 		}
 
-		irods::http::session_pointer_type sess_ptr;
-		http::response<http::buffer_body> res;
-		http::response_serializer<http::buffer_body> serializer;
+		auto start() -> void
+		{
+			log::trace("{}: Posting task for asynchronously writing headers.", __func__);
 
-		irods::experimental::client_connection conn; //{irods::experimental::defer_connection};
-		std::unique_ptr<io::client::native_transport> tp;
-		io::idstream in;
+			async_write_header(
+				sess_ptr_->stream(),
+				serializer_,
+				[self = shared_from_this(), fn = __func__](
+					const auto& ec, std::size_t _bytes_transferred) mutable {
+					log::trace("{}: Wrote [{}] bytes representing headers.", fn, _bytes_transferred);
 
-		std::vector<char> buffer;
-		std::int64_t remaining_bytes;
-	};
-
-	auto async_incremental_read(std::shared_ptr<incremental_read_context> _ctx) -> void
-	{
-		irods::http::globals::background_task([fn = __func__, _ctx = _ctx->shared_from_this()]() mutable {
-			log::debug("{}: Start!", fn);
-
-			// TODO Handle std::min<streamsize> cast for _ctx->buffer.size().
-			_ctx->in.read(_ctx->buffer.data(), std::min<std::streamsize>(_ctx->buffer.size(), _ctx->remaining_bytes));
-
-			if (_ctx->in.fail()) {
-				log::error("{}: Stream is in a bad state.", fn);
-				return;
-			}
-
-			if (_ctx->in.eof() || 0 == _ctx->remaining_bytes) {
-				log::debug("{}: All bytes have been read", fn);
-				_ctx->res.body().data = nullptr;
-				_ctx->res.body().more = false;
-			}
-			else {
-				log::debug("{}: Read [{}] bytes.", fn, _ctx->in.gcount());
-				_ctx->remaining_bytes -= _ctx->in.gcount();
-				_ctx->res.body().data = _ctx->buffer.data();
-				_ctx->res.body().size = _ctx->in.gcount();
-				_ctx->res.body().more = true;
-			}
-
-			async_write(
-				_ctx->sess_ptr->stream(),
-				_ctx->serializer,
-				[ctx = std::move(_ctx)](const auto& _ec, std::size_t _bytes_transferred) mutable {
-					static_cast<void>(_bytes_transferred);
-
-					if (_ec == http::error::need_buffer) {
-						async_incremental_read(std::move(ctx));
+					if (ec) {
+						log::error("{}: Encountered unexpected error while writing headers.", fn);
+						return;
 					}
-					else if (_ec) {
-						log::error("encountered error in async_incremental_read"); // TODO
-					}
+
+					self->stream_bytes_to_client();
 				});
-		});
-	} // async_incremental_read
-#endif
+		} // start
+
+	  private:
+		auto stream_bytes_to_client() -> void
+		{
+			irods::http::globals::background_task([self = shared_from_this(), fn = __func__]() mutable {
+				// TODO Handle std::min<streamsize> cast for _ctx->buffer.size().
+				self->in_.read(self->buffer_.data(), std::min<std::streamsize>(self->buffer_.size(), self->remaining_bytes_));
+
+				if (self->in_.fail()) {
+					log::error("{}: Stream is in a bad state.", fn);
+					return;
+				}
+
+				if (self->in_.eof() || 0 == self->remaining_bytes_) {
+					log::debug("{}: All bytes have been read.", fn);
+					self->res_.body().data = nullptr;
+					self->res_.body().more = false;
+				}
+				else {
+					log::debug("{}: Read [{}] bytes from data object.", fn, self->in_.gcount());
+					self->remaining_bytes_ -= self->in_.gcount();
+					self->res_.body().data = self->buffer_.data();
+					self->res_.body().size = self->in_.gcount();
+					self->res_.body().more = true;
+				}
+
+				async_write(
+					self->sess_ptr_->stream(),
+					self->serializer_,
+					[self = self->shared_from_this(), fn = fn](const auto& _ec, std::size_t _bytes_transferred) mutable {
+						log::debug("{}: Wrote [{}] bytes to socket.", fn, _bytes_transferred);
+
+						if (_ec == http::error::need_buffer) {
+							self->stream_bytes_to_client();
+						}
+						else if (_ec) {
+							log::error("{}: Error writing bytes to socket: {}", fn, _ec.what());
+						}
+					});
+			});
+		} // stream_bytes_to_client
+
+		irods::http::session_pointer_type sess_ptr_;
+		http::response<http::buffer_body> res_;
+		http::response_serializer<http::buffer_body> serializer_;
+
+		irods::experimental::client_connection conn_;
+		std::unique_ptr<io::client::native_transport> tp_;
+		io::idstream in_;
+
+		std::vector<char> buffer_;
+		std::int64_t remaining_bytes_;
+	}; // incremental_read
 
 	//
 	// Operation handler implementations
@@ -462,11 +431,7 @@ namespace
 		                                       client_info,
 		                                       _sess_ptr,
 		                                       _req = std::move(_req),
-#ifdef IRODS_HTTP_API_INC_READ_IMPL_0
-		                                       _args = std::move(_args)]() {
-#else
 		                                       _args = std::move(_args)]() mutable {
-#endif
 			log::info("{}: client_info.username = [{}]", fn, client_info.username);
 
 			http::response<http::string_body> res{http::status::ok, _req.version()};
@@ -645,24 +610,6 @@ namespace
 						return _sess_ptr->send(std::move(res));
 					}
 
-					std::vector<char> buffer(read_buffer_size);
-
-#ifdef IRODS_HTTP_API_INC_READ_IMPL_0
-					// The response object must be heap-allocated for this case to work.
-					auto res = std::make_unique<http::response<http::buffer_body>>(http::status::ok, _req.version());
-					res->set(http::field::server, irods::http::version::server_name);
-					res->set(http::field::content_type, "application/octet-stream");
-					//res->set(http::field::transfer_encoding, "chunked");
-					res->keep_alive(_req.keep_alive());
-
-					res->chunked(true);
-
-					res->body().data = nullptr;
-					res->body().more = true;
-
-					// The serializer must be heap-allocated since there's no support for move semantics.
-					auto sr = std::make_unique<http::response_serializer<http::buffer_body>>(*res);
-
 					// TODO Need to move all the important parts into the task.
 					// - session pointer
 					// - dedicated connection
@@ -673,76 +620,9 @@ namespace
 					// - buffer
 					// - count / remaining
 
-					incremental_read_context ctx{
-						.sess_ptr = _sess_ptr->shared_from_this(),
-						.res = std::move(res),
-						.serializer = std::move(sr),
+					std::make_shared<incremental_read>(
+						_sess_ptr, _req.version(), _req.keep_alive(), dedicated_conn, tp, in, read_buffer_size, count)->start();
 
-						.conn = std::move(dedicated_conn),
-						.tp = std::move(tp),
-						.in = std::move(in),
-
-						.buffer = std::move(buffer),
-						.remaining_bytes = count};
-
-					log::trace("{}: Posting task for asynchronously writing headers.", fn);
-					async_write_header(
-						_sess_ptr->stream(),
-						*ctx.serializer,
-						[fn = __func__, ctx = std::move(ctx)](const auto& ec, std::size_t _bytes_transferred) mutable {
-							log::trace("{}: Wrote [{}] bytes representing headers.", fn, _bytes_transferred);
-
-							if (ec) {
-								log::error("{}: Encountered unexpected error while writing headers.", fn);
-								return;
-							}
-
-							async_incremental_read(std::move(ctx));
-						});
-#else
-					// The response object must be heap-allocated for this case to work.
-					http::response<http::buffer_body> res{http::status::ok, _req.version()};
-					res.set(http::field::server, irods::http::version::server_name);
-					res.set(http::field::content_type, "application/octet-stream");
-					res.keep_alive(_req.keep_alive());
-
-					res.chunked(true);
-
-					res.body().data = nullptr;
-					res.body().more = true;
-
-					// The serializer must be heap-allocated since there's no support for move semantics.
-					http::response_serializer<http::buffer_body> sr{res};
-
-					// TODO Need to move all the important parts into the task.
-					// - session pointer
-					// - dedicated connection
-					// - response object
-					// - serializer
-					// - transport
-					// - dstream
-					// - buffer
-					// - count / remaining
-
-					auto ctx = std::make_shared<incremental_read_context>(
-						_sess_ptr, res, dedicated_conn, tp, in, buffer, count);
-
-					log::trace("{}: Posting task for asynchronously writing headers.", fn);
-					async_write_header(
-						_sess_ptr->stream(),
-						ctx->serializer,
-						[fn = __func__, ctx = ctx->shared_from_this()](
-							const auto& ec, std::size_t _bytes_transferred) mutable {
-							log::trace("{}: Wrote [{}] bytes representing headers.", fn, _bytes_transferred);
-
-							if (ec) {
-								log::error("{}: Encountered unexpected error while writing headers.", fn);
-								return;
-							}
-
-							async_incremental_read(ctx->shared_from_this());
-						});
-#endif
 					return;
 				}
 
