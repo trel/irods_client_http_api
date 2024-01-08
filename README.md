@@ -159,7 +159,7 @@ irods_http_api v0.1.0-f6f6411
 
 To run the containerized server, you need to provide a configuration file at the correct location. If you do not have a configuration file already, see [Configuration](#configuration) for details.
 
-Assuming you have a valid configuration file, you can launch the server by running the following command:
+To launch the server, run the following command:
 ```bash
 docker run -d --rm --name irods_http_api \
     -v /path/to/config/file:/config.json:ro \
@@ -167,27 +167,14 @@ docker run -d --rm --name irods_http_api \
     irods-http-api-runner
 ```
 
+The first thing the server will do is validate the configuration. If the configuration fails validation, the server will exit immediately. If the configuration passes validation, then congratulations, you now have a working iRODS HTTP API server!
+
 You can view the log output using `docker logs -f` or by passing `-it` to `docker run` instead of `-d`.
 
-Congratulations, you now have a working iRODS HTTP API server!
-
-#### Validating the Configuration
-
-If you have Python 3 and the jsonschema module installed, you can validate your configuration on startup. To do that, launch the container with `--jsonschema-file`. Below is an example.
-```bash
-docker run -d --rm --name irods_http_api \
-    -v /path/to/config/file:/config.json:ro \
-    -p 9000:9000 \
-    irods-http-api-runner \
-    --jsonschema-file
-```
-
-If your configuration passes validation, the server will start. Otherwise, the server will print the validation results to the terminal and exit.
-
-If for some reason the default schema file is not sufficient, you can instruct the iRODS HTTP API to use a different file. See the following example.
+If for some reason the default schema file is not sufficient, you can instruct the iRODS HTTP API to use a different schema file. See the following example.
 ```bash
 # Generate the default JSON schema.
-docker run -it --rm irods-http-api-runner --dump-jsonschema > schema.json
+docker run -it --rm irods-http-api-runner --dump-default-jsonschema > schema.json
 
 # Tweak the schema.
 vim schema.json

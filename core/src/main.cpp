@@ -177,7 +177,7 @@ auto print_version_info() -> void
 	fmt::print("{} v{}-{}\n", version::binary_name, version::api_version, sha.substr(0, sha_size));
 } // print_version_info
 
-constexpr auto jsonschema() -> std::string_view
+constexpr auto default_jsonschema() -> std::string_view
 {
 	// clang-format on
 	return R"({{
@@ -189,7 +189,8 @@ constexpr auto jsonschema() -> std::string_view
             "type": "object",
             "properties": {{
                 "host": {{
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[0-9]{{1,3}}\\.[0-9]{{1,3}}\\.[0-9]{{1,3}}\\.[0-9]{{1,3}}$"
                 }},
                 "port": {{
                     "type": "integer"
@@ -219,9 +220,11 @@ constexpr auto jsonschema() -> std::string_view
                                     "minimum": 1
                                 }}
                             }},
-                            "required": ["timeout_in_seconds"]
+                            "required": [
+                                "timeout_in_seconds"
+                            ]
                         }},
-                        "openid_connect": {{
+                        "oidc": {{
                             "type": "object",
                             "properties": {{
                                 "config_host": {{
@@ -249,7 +252,21 @@ constexpr auto jsonschema() -> std::string_view
                                 "redirect_uri"
                             ]
                         }}
-                    }}
+                    }},
+                    "anyOf": [
+                        {{
+                            "required": [
+                                "eviction_check_interval_in_seconds",
+                                "basic"
+                            ]
+                        }},
+                        {{
+                             "required": [
+                                "eviction_check_interval_in_seconds",
+                                "oidc"
+                             ]
+                        }}
+                    ]
                 }},
                 "requests": {{
                     "type": "object",
@@ -266,7 +283,12 @@ constexpr auto jsonschema() -> std::string_view
                             "type": "integer",
                             "minimum": 1
                         }}
-                    }}
+                    }},
+                    "required": [
+                        "threads",
+                        "max_size_of_body_in_bytes",
+                        "timeout_in_seconds"
+                    ]
                 }},
                 "background_io": {{
                     "type": "object",
@@ -275,7 +297,10 @@ constexpr auto jsonschema() -> std::string_view
                             "type": "integer",
                             "minimum": 1
                         }}
-                    }}
+                    }},
+                    "required": [
+                        "threads"
+                    ]
                 }}
             }},
             "required": [
@@ -332,6 +357,9 @@ constexpr auto jsonschema() -> std::string_view
                         "verify_server"
                     ]
                 }},
+                "enable_4_2_compatibility": {{
+                    "type": "boolean"
+                }},
                 "proxy_admin_account": {{
                     "type": "object",
                     "properties": {{
@@ -346,9 +374,6 @@ constexpr auto jsonschema() -> std::string_view
                         "username",
                         "password"
                     ]
-                }},
-                "enable_4_2_compatibility": {{
-                    "type": "boolean"
                 }},
                 "connection_pool": {{
                     "type": "object",
@@ -368,7 +393,10 @@ constexpr auto jsonschema() -> std::string_view
                         "refresh_when_resource_changes_detected": {{
                             "type": "boolean"
                         }}
-                    }}
+                    }},
+                    "required": [
+                        "size"
+                    ]
                 }},
                 "max_number_of_parallel_write_streams": {{
                     "type": "integer",
@@ -391,7 +419,9 @@ constexpr auto jsonschema() -> std::string_view
                 "host",
                 "port",
                 "zone",
+                "enable_4_2_compatibility",
                 "proxy_admin_account",
+                "connection_pool",
                 "max_number_of_parallel_write_streams",
                 "max_number_of_bytes_per_read_operation",
                 "buffer_size_in_bytes_for_write_operations",
@@ -406,7 +436,7 @@ constexpr auto jsonschema() -> std::string_view
 }}
 )";
 	// clang-format on
-} // jsonschema
+} // default_jsonschema
 
 auto print_configuration_template() -> void
 {
@@ -496,7 +526,7 @@ configuration options.
 --dump-config-template can be used to generate a default configuration file.
 See this option's description for more information.
 
---dump-jsonschema can be used to generate a default schema file.
+--dump-default-jsonschema can be used to generate a default schema file.
 See this option's description for more information.
 
 Options:
@@ -505,14 +535,15 @@ Options:
                      options have values which act as placeholders. If used
                      to generate a configuration file, those options will
                      need to be updated.
-      --dump-jsonschema
-                     Print default JSON schema to stdout and exit. The
-                     schema is used to validate the configuration file.
-      --jsonschema-file [SCHEMA_FILE_PATH]
+      --dump-default-jsonschema
+                     Print the default JSON schema to stdout and exit. The
+                     JSON schema output can be used to create a custom
+                     schema. This is for cases where the default schema is
+                     too restrictive or contains a bug.
+      --jsonschema-file SCHEMA_FILE_PATH
                      Validate server configuration against SCHEMA_FILE_PATH.
                      Validation is performed before startup. If validation
-                     fails, the server will exit. If SCHEMA_FILE_PATH is not
-                     defined, the default is used.
+                     fails, the server will exit.
   -h, --help         Display this help message and exit.
   -v, --version      Display version information and exit.
 
@@ -521,58 +552,61 @@ Options:
 	print_version_info();
 } // print_usage
 
-auto is_valid_configuration(const std::string& _schema_path, const std::string& _config) -> bool
+auto is_valid_configuration(const std::string& _schema_path, const std::string& _config_path) -> bool
 {
 	try {
-		fmt::print("Validating configuration file ... ");
+		fmt::print("Validating configuration file ...\n");
+
+		const auto validate_config = [&_config_path](const std::string_view _schema_path) -> int
+		{
+			constexpr std::string_view python_code = 
+				"import json, jsonschema; "
+				"config_file = open('{}'); "
+				"config = json.load(config_file); "
+				"config_file.close(); "
+				"schema_file = open('{}'); "
+				"schema = json.load(schema_file); "
+				"schema_file.close(); "
+				"jsonschema.validate(config, schema);";
+
+			return boost::process::system(boost::process::search_path("python3"), "-c", fmt::format(python_code, _config_path, _schema_path));
+		};
 
 		std::string schema;
 		int ec = -1;
 
 		if (_schema_path.empty()) {
-			constexpr const char* schema_path = "/tmp/default_irods_http_api_jsonschema.json";
+			fmt::print("No JSON schema file provided. Using default.\n");
 
-			if (std::ofstream out{schema_path}; out) {
-				out << fmt::format(jsonschema());
+			constexpr const char* default_schema_file_path = "/tmp/default_irods_http_api_jsonschema.json";
+
+			if (std::ofstream out{default_schema_file_path}; out) {
+				out << fmt::format(default_jsonschema());
 			}
 			else {
-				fmt::print("failure.\n");
-				fmt::print(stderr, "error: could not create local schema file.\n");
+				fmt::print(stderr, "Could not create local schema file for validation.\n");
 				return false;
 			}
 
-			ec = boost::process::system(
-				boost::process::search_path("python3"),
-				"-c",
-				fmt::format(
-					R"_(import json, jsonschema; f = open("{}"); jsonschema.validate(json.loads('{}'), json.load(f)); f.close())_",
-					schema_path,
-					_config));
+			ec = validate_config(default_schema_file_path);
 		}
 		else {
-			ec = boost::process::system(
-				boost::process::search_path("python3"),
-				"-c",
-				fmt::format(
-					R"_(import json, jsonschema; f = open("{}"); jsonschema.validate(json.loads('{}'), json.load(f)); f.close())_",
-					_schema_path,
-					_config));
+			fmt::print("Using user-provided schema file [{}].\n", _schema_path);
+			ec = validate_config(_schema_path);
 		}
 
 		if (ec == 0) {
-			fmt::print("success.\n");
+			fmt::print("Configuration passed validation!\n");
 			return true;
 		}
 
-		fmt::print("failure.\n");
+		fmt::print(stderr, "Configuration failed validation.\n");
 	}
 	catch (const std::system_error& e) {
-		fmt::print("failure.\n", e.what());
-		fmt::print(stderr, "error: {}\n", e.what());
+		fmt::print(stderr, "Error: {}\n", e.what());
 	}
 	catch (const std::exception& e) {
-		fmt::print("failure.\n", e.what());
-		fmt::print(stderr, "error: {}\n", e.what());
+		fmt::print(stderr, "Error: {}\n", e.what());
 	}
 
 	return false;
@@ -768,9 +802,9 @@ auto main(int _argc, char* _argv[]) -> int
 	// clang-format off
 	opts_desc.add_options()
 		("config-file,f", po::value<std::string>(), "")
-		("jsonschema-file", po::value<std::string>()->implicit_value(""), "")
+		("jsonschema-file", po::value<std::string>(), "")
 		("dump-config-template", "")
-		("dump-jsonschema", "")
+		("dump-default-jsonschema", "")
 		("help,h", "")
 		("version,v", "");
 	// clang-format on
@@ -800,8 +834,8 @@ auto main(int _argc, char* _argv[]) -> int
 			return 0;
 		}
 
-		if (vm.count("dump-jsonschema") > 0) {
-			fmt::print(jsonschema());
+		if (vm.count("dump-default-jsonschema") > 0) {
+			fmt::print(default_jsonschema());
 			return 0;
 		}
 
@@ -813,10 +847,8 @@ auto main(int _argc, char* _argv[]) -> int
 		const auto config = json::parse(std::ifstream{vm["config-file"].as<std::string>()});
 		irods::http::globals::set_configuration(config);
 
-		if (vm.count("jsonschema-file") > 0) {
-			if (!is_valid_configuration(vm["jsonschema-file"].as<std::string>(), config.dump())) {
-				return 1;
-			}
+		if (!is_valid_configuration((vm.count("jsonschema-file") > 0) ? vm["jsonschema-file"].as<std::string>() : "", vm["config-file"].as<std::string>())) {
+			return 1;
 		}
 
 		const auto& http_server_config = config.at("http_server");
