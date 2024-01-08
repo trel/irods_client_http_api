@@ -557,19 +557,18 @@ auto is_valid_configuration(const std::string& _schema_path, const std::string& 
 	try {
 		fmt::print("Validating configuration file ...\n");
 
-		const auto validate_config = [&_config_path](const std::string_view _schema_path) -> int
-		{
-			constexpr std::string_view python_code = 
-				"import json, jsonschema; "
-				"config_file = open('{}'); "
-				"config = json.load(config_file); "
-				"config_file.close(); "
-				"schema_file = open('{}'); "
-				"schema = json.load(schema_file); "
-				"schema_file.close(); "
-				"jsonschema.validate(config, schema);";
+		const auto validate_config = [&_config_path](const std::string_view _schema_path) -> int {
+			constexpr std::string_view python_code = "import json, jsonschema; "
+													 "config_file = open('{}'); "
+													 "config = json.load(config_file); "
+													 "config_file.close(); "
+													 "schema_file = open('{}'); "
+													 "schema = json.load(schema_file); "
+													 "schema_file.close(); "
+													 "jsonschema.validate(config, schema);";
 
-			return boost::process::system(boost::process::search_path("python3"), "-c", fmt::format(python_code, _config_path, _schema_path));
+			return boost::process::system(
+				boost::process::search_path("python3"), "-c", fmt::format(python_code, _config_path, _schema_path));
 		};
 
 		std::string schema;
@@ -847,8 +846,11 @@ auto main(int _argc, char* _argv[]) -> int
 		const auto config = json::parse(std::ifstream{vm["config-file"].as<std::string>()});
 		irods::http::globals::set_configuration(config);
 
-		if (!is_valid_configuration((vm.count("jsonschema-file") > 0) ? vm["jsonschema-file"].as<std::string>() : "", vm["config-file"].as<std::string>())) {
-			return 1;
+		{
+			const auto schema_file = (vm.count("jsonschema-file") > 0) ? vm["jsonschema-file"].as<std::string>() : "";
+			if (!is_valid_configuration(schema_file, vm["config-file"].as<std::string>())) {
+				return 1;
+			}
 		}
 
 		const auto& http_server_config = config.at("http_server");
