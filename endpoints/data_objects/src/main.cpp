@@ -348,8 +348,7 @@ namespace
 			async_write_header(
 				sess_ptr_->stream(),
 				serializer_,
-				[self = shared_from_this(), fn = __func__](
-					const auto& ec, std::size_t _bytes_transferred) mutable {
+				[self = shared_from_this(), fn = __func__](const auto& ec, std::size_t _bytes_transferred) mutable {
 					log::trace("{}: Wrote [{}] bytes representing headers.", fn, _bytes_transferred);
 
 					if (ec) {
@@ -366,7 +365,8 @@ namespace
 		{
 			irods::http::globals::background_task([self = shared_from_this(), fn = __func__]() mutable {
 				// TODO Handle std::min<streamsize> cast for _ctx->buffer.size().
-				self->in_.read(self->buffer_.data(), std::min<std::streamsize>(self->buffer_.size(), self->remaining_bytes_));
+				self->in_.read(
+					self->buffer_.data(), std::min<std::streamsize>(self->buffer_.size(), self->remaining_bytes_));
 
 				if (self->in_.fail()) {
 					log::error("{}: Stream is in a bad state.", fn);
@@ -389,7 +389,8 @@ namespace
 				async_write(
 					self->sess_ptr_->stream(),
 					self->serializer_,
-					[self = self->shared_from_this(), fn = fn](const auto& _ec, std::size_t _bytes_transferred) mutable {
+					[self = self->shared_from_this(), fn = fn](
+						const auto& _ec, std::size_t _bytes_transferred) mutable {
 						log::debug("{}: Wrote [{}] bytes to socket.", fn, _bytes_transferred);
 
 						if (_ec == http::error::need_buffer) {
@@ -610,18 +611,11 @@ namespace
 						return _sess_ptr->send(std::move(res));
 					}
 
-					// TODO Need to move all the important parts into the task.
-					// - session pointer
-					// - dedicated connection
-					// - response object
-					// - serializer
-					// - transport
-					// - dstream
-					// - buffer
-					// - count / remaining
-
+					// clang-format off
 					std::make_shared<incremental_read>(
-						_sess_ptr, _req.version(), _req.keep_alive(), dedicated_conn, tp, in, read_buffer_size, count)->start();
+						_sess_ptr, _req.version(), _req.keep_alive(), dedicated_conn, tp, in, read_buffer_size, count)
+							->start();
+					// clang-format on
 
 					return;
 				}
