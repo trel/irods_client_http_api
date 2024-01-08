@@ -2114,6 +2114,7 @@ namespace
 						addKeyVal(&input.condInput, REPL_NUM_KW, iter->second.c_str());
 					}
 
+					// TODO Rename this.
 					if (const auto iter = _args.find("force"); iter != std::end(_args) && iter->second == "1") {
 						addKeyVal(&input.condInput, FORCE_CHKSUM_KW, "");
 					}
