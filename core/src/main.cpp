@@ -914,7 +914,7 @@ auto main(int _argc, char* _argv[]) -> int
 				}
 
 				// Stop the io_context. This will cause run() to return immediately, eventually destroying
-			    // the io_context and all of the sockets in it.
+				// the io_context and all of the sockets in it.
 				log::warn("Received signal [{}]. Shutting down.", _signal);
 				ioc.stop();
 			};
