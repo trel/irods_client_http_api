@@ -29,7 +29,7 @@ Then, the HTTP API will be available.
 
 ```
 $ curl -X POST -u rods:rods \
- http://localhost:9000/irods-http-api/<version>/authenticate
+    http://localhost:9000/irods-http-api/<version>/authenticate
 568bbfc2-7d19-4723-b659-bb9325f9b076
 
 $ curl -s http://localhost:9000/irods-http-api/<version>/collections \
@@ -90,7 +90,7 @@ Upon success, you should have an installable package.
 
 ## Docker
 
-This project provides two Dockerfiles, one for building and one for running the application.
+This project provides two types of Dockerfiles, some for building packages on various operating systems, and one for running the application.
 
 **IMPORTANT: All commands in the sections that follow assume you are located in the root of the repository.**
 
@@ -98,7 +98,7 @@ This project provides two Dockerfiles, one for building and one for running the 
 
 The builder image is responsible for building the iRODS HTTP API package. Before you can use it, you must build the image. To do that, run the following:
 ```bash
-docker build -t irods-http-api-builder -f irods_builder.Dockerfile .
+docker build -t irods-http-api-builder -f irods_builder.ub22.Dockerfile .
 ```
 
 With the builder image in hand, all that's left is to build the iRODS HTTP API project. The builder image is designed to compile code sitting on your machine. This is important because it gives you the ability to build any fork or branch of the project. **Keep in mind the [GenQuery2 API plugin](https://github.com/irods/irods_api_plugin_genquery2) is no longer supported.**
